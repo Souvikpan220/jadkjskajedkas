@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>ViewFlow — Social Growth Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    /* ─── DESIGN TOKENS ─────────────────────────────────────── */
+    :root {
+      --bg:         #080808;
+      --bg-2:       #0f0f0f;
+      --bg-3:       #161616;
+      --surface:    #1a1a1a;
+      --surface-2:  #222222;
+      --border:     rgba(255,255,255,0.08);
+      --border-2:   rgba(255,255,255,0.12);
+      --text:       #ededed;
+      --text-2:     #a1a1a1;
+      --text-3:     #6e6e6e;
+      --white:      #ffffff;
+      --r-sm:   8px;
+      --r-md:   12px;
+      --r-lg:   16px;
+      --r-xl:   20px;
+      --ease:   cubic-bezier(.25,.1,.25,1);
+      --ease-out: cubic-bezier(0,0,.2,1);
+      --spring: cubic-bezier(.34,1.56,.64,1);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      font-family: 'Geist', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── BACKGROUND — matching the dark+white orb in the image ── */
+    .bg-scene {
+      position: fixed; inset: 0; z-index: 0;
+      overflow: hidden; pointer-events: none;
+    }
+    /* Large luminous orb top-right like the reference image */
+    .bg-scene::before {
+      content: '';
+      position: absolute;
+      top: -25%; right: -15%;
+      width: 85vw; height: 85vw;
+      max-width: 960px; max-height: 960px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%,
+        rgba(255,255,255,0.11) 0%,
+        rgba(255,255,255,0.04) 40%,
+        transparent 68%
+      );
+    }
+    /* Soft secondary glow bottom-left */
+    .bg-scene::after {
+      content: '';
+      position: absolute;
+      bottom: 5%; left: -8%;
+      width: 55vw; height: 55vw;
+      max-width: 650px; max-height: 650px;
+      border-radius: 50%;
+      background: radial-gradient(circle,
+        rgba(255,255,255,0.035) 0%,
+        transparent 60%
+      );
+    }
+    /* Fine dot grid */
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.026) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 90% 70% at 60% 0%, black 30%, transparent 100%);
+    }
+
+    /* ─── LAYOUT ─────────────────────────────────────────────── */
+    .app { position: relative; z-index: 1; }
+
+    /* ─── HEADER ─────────────────────────────────────────────── */
+    header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 clamp(20px, 5vw, 48px);
+      background: rgba(8,8,8,0.70);
+      backdrop-filter: blur(18px) saturate(180%);
+      -webkit-backdrop-filter: blur(18px) saturate(180%);
+      border-bottom: 1px solid var(--border);
+      transition: transform 0.3s var(--ease), background 0.3s;
+    }
+    header.scrolled { background: rgba(8,8,8,0.90); }
+    header.hidden { transform: translateY(-100%); }
+
+    .logo {
+      display: flex; align-items: center; gap: 9px;
+      font-weight: 600; font-size: 0.95rem;
+      letter-spacing: -0.02em; color: var(--white);
+      text-decoration: none;
+    }
+    .logo-mark {
+      width: 26px; height: 26px;
+      background: var(--white);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark svg { width: 14px; height: 14px; }
+
+    nav { display: flex; align-items: center; gap: 4px; }
+    .btn-nav {
+      font-size: 0.8rem; font-weight: 500; color: var(--text-2);
+      padding: 6px 12px; border-radius: var(--r-sm);
+      text-decoration: none; letter-spacing: -0.01em;
+      transition: color 0.2s, background 0.2s;
+    }
+    .btn-nav:hover { color: var(--white); background: rgba(255,255,255,0.07); }
+
+    .btn-support {
+      height: 34px; padding: 0 16px;
+      font-family: 'Geist', sans-serif;
+      font-size: 0.8rem; font-weight: 500; letter-spacing: -0.01em;
+      color: #111; background: var(--white);
+      border: none; border-radius: var(--r-sm);
+      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    }
+    .btn-support:hover {
+      background: #e8e8e8;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.25), 0 4px 16px rgba(255,255,255,0.07);
+      transform: translateY(-1px);
+    }
+    .btn-support:active { transform: scale(0.97); }
+    .btn-support svg { width: 13px; height: 13px; }
+
+    /* ─── MAIN ───────────────────────────────────────────────── */
+    main {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 100px clamp(20px, 6vw, 80px) 80px;
+      gap: 64px;
+    }
+
+    /* ─── HERO ───────────────────────────────────────────────── */
+    .hero {
+      text-align: center; max-width: 620px;
+      opacity: 0; transform: translateY(22px);
+      animation: revealUp 0.75s var(--ease-out) 0.1s forwards;
+    }
+    @keyframes revealUp { to { opacity:1; transform:translateY(0); } }
+
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 28px; padding: 0 12px;
+      border-radius: 50px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.09);
+      font-size: 0.72rem; font-weight: 500;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--text-2); margin-bottom: 24px;
+    }
+    .hero-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #22c55e; box-shadow: 0 0 8px #22c55e;
+      animation: blink 2.5s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    h1 {
+      font-size: clamp(2.5rem, 5.5vw, 4rem);
+      font-weight: 700; line-height: 1.07;
+      letter-spacing: -0.04em; color: var(--white);
+      margin-bottom: 20px;
+    }
+    h1 em {
+      font-style: normal;
+      background: linear-gradient(180deg, #fff 0%, #777 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1rem; color: var(--text-2); line-height: 1.7;
+      max-width: 420px; margin: 0 auto; letter-spacing: -0.01em;
+    }
+
+    /* ─── STATS ──────────────────────────────────────────────── */
+    .stats-row {
+      display: flex; gap: 40px; flex-wrap: wrap; justify-content: center;
+      opacity: 0; transform: translateY(16px);
+      animation: revealUp 0.7s var(--ease-out) 0.28s forwards;
+    }
+    .stat { text-align: center; position: relative; }
+    .stat + .stat::before {
+      content: ''; position: absolute; left: -20px; top: 50%;
+      transform: translateY(-50%);
+      width: 1px; height: 22px; background: var(--border-2);
+    }
+    .stat-value {
+      font-family: 'Geist Mono', monospace;
+      font-size: 1.5rem; font-weight: 600;
+      color: var(--white); letter-spacing: -0.03em;
+      line-height: 1; margin-bottom: 5px;
+    }
+    .stat-label {
+      font-size: 0.7rem; font-weight: 400;
+      color: var(--text-3); letter-spacing: 0.03em; text-transform: uppercase;
+    }
+
+    /* ─── CARDS ──────────────────────────────────────────────── */
+    .cards-section {
+      width: 100%; max-width: 860px;
+      opacity: 0; transform: translateY(20px);
+      animation: revealUp 0.7s var(--ease-out) 0.44s forwards;
+    }
+    .section-label {
+      font-size: 0.7rem; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--text-3); margin-bottom: 14px; padding-left: 2px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .card {
+      position: relative; overflow: hidden;
+      padding: 26px 22px;
+      border-radius: var(--r-lg);
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      cursor: pointer; text-decoration: none; color: inherit;
+      display: flex; flex-direction: column; gap: 18px;
+      transition: border-color 0.25s, background 0.25s, transform 0.25s var(--ease), box-shadow 0.25s;
+      user-select: none;
+    }
+    /* Top gradient shimmer line — visible on hover */
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: var(--card-line, transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    /* Radial inner highlight on hover */
+    .card::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 70%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .card:hover {
+      border-color: rgba(255,255,255,0.15);
+      background: #1b1b1b;
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.05) inset;
+    }
+    .card:hover::before, .card:hover::after { opacity: 1; }
+    .card:active { transform: translateY(-1px); }
+
+    .card-tt  { --card-line: linear-gradient(90deg, #69C9D0 0%, #EE1D52 100%); }
+    .card-ig  { --card-line: linear-gradient(90deg, #f09433 0%, #bc1888 100%); }
+    .card-buy { --card-line: linear-gradient(90deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.08) 100%); }
+
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; position: relative; z-index: 1; }
+    .icon-box {
+      width: 42px; height: 42px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+    }
+    .card:hover .icon-box { background: var(--surface-2); }
+    .icon-box svg { width: 22px; height: 22px; }
+
+    .card-arrow {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.04);
+      transition: background 0.2s, transform 0.25s var(--spring);
+    }
+    .card:hover .card-arrow { background: rgba(255,255,255,0.09); transform: translate(2px,-2px); }
+    .card-arrow svg { width: 13px; height: 13px; color: var(--text-3); }
+
+    .card-body { flex: 1; position: relative; z-index: 1; }
+    .card-title {
+      font-size: 0.9rem; font-weight: 600; letter-spacing: -0.02em;
+      color: var(--white); margin-bottom: 6px;
+    }
+    .card-desc { font-size: 0.78rem; color: var(--text-2); line-height: 1.6; letter-spacing: -0.005em; }
+
+    .card-foot {
+      padding-top: 14px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+      position: relative; z-index: 1;
+    }
+    .pill {
+      font-size: 0.67rem; font-weight: 500; letter-spacing: 0.02em;
+      padding: 3px 9px; border-radius: 50px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      color: var(--text-3);
+    }
+    .pill.green { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.2); color: #4ade80; }
+
+    /* ─── TRUST BADGES ───────────────────────────────────────── */
+    .trust {
+      display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;
+      opacity: 0; animation: revealUp 0.7s var(--ease-out) 0.58s forwards;
+    }
+    .badge {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 0.75rem; font-weight: 400;
+      color: var(--text-3); letter-spacing: -0.01em;
+    }
+    .badge-ico {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .badge-ico svg { width: 10px; height: 10px; color: var(--text-2); }
+
+    /* ─── TICKER ─────────────────────────────────────────────── */
+    .ticker-wrap {
+      max-width: 460px; width: 100%;
+      opacity: 0; animation: revealUp 0.7s var(--ease-out) 0.72s forwards;
+    }
+    .ticker { position: relative; height: 36px; overflow: hidden; }
+    .ticker-item {
+      position: absolute; width: 100%;
+      height: 36px; display: flex; align-items: center; gap: 9px;
+      padding: 0 14px; border-radius: var(--r-md);
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      font-size: 0.78rem; color: var(--text-3); letter-spacing: -0.01em;
+      opacity: 0; transform: translateY(8px);
+      transition: opacity 0.45s var(--ease-out), transform 0.45s var(--ease-out);
+    }
+    .ticker-item.visible { opacity: 1; transform: translateY(0); }
+    .ticker-item.leaving { opacity: 0; transform: translateY(-8px); }
+    .t-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; flex-shrink: 0; }
+
+    /* ─── MODAL ──────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.70);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s var(--ease);
+    }
+    .overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      width: 100%; max-width: 440px;
+      border-radius: var(--r-xl);
+      background: #111;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 32px 90px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.06) inset;
+      overflow: hidden;
+      transform: scale(0.93) translateY(16px);
+      opacity: 0;
+      transition: transform 0.32s var(--spring), opacity 0.25s var(--ease);
+    }
+    .overlay.open .modal { transform: scale(1) translateY(0); opacity: 1; }
+
+    .modal-top {
+      padding: 22px 22px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 3px;
+    }
+    .modal-ttl {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 0.95rem; font-weight: 600; letter-spacing: -0.02em; color: var(--white);
+    }
+    .modal-ttl svg { width: 19px; height: 19px; }
+    .modal-sub { font-size: 0.78rem; color: var(--text-3); padding-left: 28px; }
+    .modal-x {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      color: var(--text-3); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, color 0.2s;
+    }
+    .modal-x:hover { background: rgba(255,255,255,0.1); color: var(--white); }
+
+    .modal-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label {
+      font-size: 0.7rem; font-weight: 500;
+      letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);
+    }
+    .field input {
+      height: 42px; padding: 0 14px;
+      border-radius: var(--r-md);
+      background: var(--bg-2); border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Geist', sans-serif; font-size: 0.875rem; letter-spacing: -0.01em;
+      outline: none; width: 100%;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus { border-color: rgba(255,255,255,0.24); box-shadow: 0 0 0 3px rgba(255,255,255,0.05); }
+    .field input:disabled { opacity: 0.4; cursor: not-allowed; font-family: 'Geist Mono', monospace; }
+    .field input::placeholder { color: var(--text-3); }
+
+    .btn-sub {
+      height: 44px; border-radius: var(--r-md); width: 100%;
+      font-family: 'Geist', sans-serif; font-size: 0.875rem; font-weight: 600; letter-spacing: -0.01em;
+      background: var(--white); color: #111; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background 0.2s, transform 0.2s var(--ease), box-shadow 0.2s;
+      position: relative; overflow: hidden;
+    }
+    .btn-sub:hover { background: #ebebeb; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(255,255,255,0.12); }
+    .btn-sub:active { transform: scale(0.98); }
+    .btn-sub:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .ripple {
+      position: absolute; border-radius: 50%; pointer-events: none;
+      transform: scale(0); animation: rip 0.55s linear;
+      background: rgba(0,0,0,0.1);
+    }
+    @keyframes rip { to { transform: scale(4); opacity: 0; } }
+
+    .spin-ico {
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid rgba(17,17,17,0.25); border-top-color: #111;
+      animation: spinning 0.65s linear infinite;
+    }
+    @keyframes spinning { to { transform: rotate(360deg); } }
+
+    /* ─── TOASTS ─────────────────────────────────────────────── */
+    #toasts {
+      position: fixed; bottom: 20px; right: 18px; z-index: 400;
+      display: flex; flex-direction: column-reverse; gap: 8px;
+    }
+    .toast {
+      min-width: 256px; max-width: 356px;
+      padding: 11px 15px;
+      border-radius: var(--r-md);
+      background: #1c1c1c; border: 1px solid var(--border-2);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+      font-size: 0.8rem; color: var(--text); letter-spacing: -0.01em;
+      display: flex; align-items: flex-start; gap: 10px;
+      animation: tIn 0.35s var(--spring) both;
+    }
+    @keyframes tIn { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:translateX(0); } }
+    .toast.out { animation: tOut 0.28s var(--ease) forwards; }
+    @keyframes tOut { to { opacity:0; transform:translateX(18px); } }
+    .t-indicator { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .toast.success .t-indicator { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .toast.error   .t-indicator { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+    .toast.info    .t-indicator { background: #fff;    box-shadow: 0 0 6px rgba(255,255,255,0.3); }
+
+    /* ─── FOOTER ─────────────────────────────────────────────── */
+    footer {
+      position: relative; z-index: 1;
+      padding: 28px clamp(20px,5vw,48px);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .ft-left { font-size: 0.75rem; color: var(--text-3); letter-spacing: -0.01em; }
+    .ft-links { display: flex; gap: 20px; }
+    .ft-link { font-size: 0.75rem; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+    .ft-link:hover { color: var(--text); }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      .cards { grid-template-columns: 1fr; }
+      .stat + .stat::before { display: none; }
+      header nav { display: none; }
+      .ft-links { display: none; }
+      main { gap: 44px; }
+    }
+    @media (max-width: 400px) {
+      .stats-row { gap: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-scene" aria-hidden="true"></div>
+<div class="bg-grid" aria-hidden="true"></div>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header id="hdr">
+    <a class="logo" href="#">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      ViewFlow
+    </a>
+    <nav>
+      <a class="btn-nav" href="#">How it works</a>
+      <a class="btn-nav" href="#">Pricing</a>
+    </nav>
+    <a class="btn-support" href="YOUR_DISCORD_INVITE" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+      Support
+    </a>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-eyebrow">
+        <div class="hero-dot"></div>
+        Free plan — 100 views per order
+      </div>
+      <h1>Grow your<br/><em>social presence</em><br/>instantly.</h1>
+      <p class="hero-sub">Submit your TikTok or Instagram video and get 100 free views delivered in minutes. No account needed.</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-value" id="s-orders">12,847</div>
+        <div class="stat-label">Orders Delivered</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="s-active">1,203</div>
+        <div class="stat-label">Active Now</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="s-rate">98.7%</div>
+        <div class="stat-label">Success Rate</div>
+      </div>
+    </div>
+
+    <!-- Cards -->
+    <div class="cards-section">
+      <div class="section-label">Choose a platform</div>
+      <div class="cards">
+
+        <!-- TikTok -->
+        <div class="card card-tt" id="btn-tt" role="button" tabindex="0">
+          <div class="card-head">
+            <div class="icon-box">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.19 8.19 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z" fill="url(#tt1)"/>
+                <defs><linearGradient id="tt1" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#69C9D0"/><stop offset="1" stop-color="#EE1D52"/></linearGradient></defs>
+              </svg>
+            </div>
+            <div class="card-arrow">
+              <svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 11L11 2M5 2h6v6"/></svg>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">TikTok Views</div>
+            <div class="card-desc">Boost your TikTok video with 100 genuine views. Paste your video URL and submit.</div>
+          </div>
+          <div class="card-foot">
+            <span class="pill green">Free</span>
+            <span class="pill">100 views</span>
+            <span class="pill">~2 min</span>
+          </div>
+        </div>
+
+        <!-- Instagram -->
+        <div class="card card-ig" id="btn-ig" role="button" tabindex="0">
+          <div class="card-head">
+            <div class="icon-box">
+              <svg viewBox="0 0 24 24">
+                <defs><linearGradient id="ig1" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#f09433"/><stop offset="0.5" stop-color="#dc2743"/><stop offset="1" stop-color="#bc1888"/></linearGradient></defs>
+                <path fill="url(#ig1)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+              </svg>
+            </div>
+            <div class="card-arrow">
+              <svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 11L11 2M5 2h6v6"/></svg>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">Instagram Views</div>
+            <div class="card-desc">Get 100 free views on your Instagram Reel. Fast delivery, no login required.</div>
+          </div>
+          <div class="card-foot">
+            <span class="pill green">Free</span>
+            <span class="pill">100 views</span>
+            <span class="pill">~3 min</span>
+          </div>
+        </div>
+
+        <!-- Buy Credits -->
+        <a class="card card-buy" href="YOUR_DISCORD_INVITE" target="_blank" rel="noopener">
+          <div class="card-head">
+            <div class="icon-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+              </svg>
+            </div>
+            <div class="card-arrow">
+              <svg viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 11L11 2M5 2h6v6"/></svg>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">Buy Credits</div>
+            <div class="card-desc">Need more views? Purchase credit packs on our Discord for bulk orders.</div>
+          </div>
+          <div class="card-foot">
+            <span class="pill">Unlimited</span>
+            <span class="pill">Discord</span>
+          </div>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- Trust -->
+    <div class="trust">
+      <div class="badge"><div class="badge-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>Fast Delivery</div>
+      <div class="badge"><div class="badge-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>Secure System</div>
+      <div class="badge"><div class="badge-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>No Login Required</div>
+      <div class="badge"><div class="badge-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div>98.7% Success Rate</div>
+    </div>
+
+    <!-- Ticker -->
+    <div class="ticker-wrap">
+      <div class="ticker" id="ticker">
+        <div class="ticker-item" id="titem">
+          <div class="t-dot"></div>
+          <span id="ttext">Loading activity…</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <div class="ft-left">© 2025 ViewFlow. All rights reserved.</div>
+    <div class="ft-links">
+      <a class="ft-link" href="#">Terms</a>
+      <a class="ft-link" href="#">Privacy</a>
+      <a class="ft-link" href="YOUR_DISCORD_INVITE" target="_blank">Discord</a>
+    </div>
+  </footer>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-top">
+      <div class="modal-hdr">
+        <div class="modal-ttl">
+          <span id="m-icon"></span>
+          <span id="m-name">Order</span>
+        </div>
+        <button class="modal-x" id="m-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-sub" id="m-sub">Enter your video URL below</div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="url-inp">Video URL</label>
+        <input id="url-inp" type="url" placeholder="https://" autocomplete="off" spellcheck="false"/>
+      </div>
+      <div class="field">
+        <label>Amount</label>
+        <input type="text" value="100 views (free)" disabled/>
+      </div>
+      <button class="btn-sub" id="sub-btn">
+        <span id="sub-lbl">Submit Order</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  CONFIG — replace these
+// ═══════════════════════════════════════════════
+const API_BASE = ''; // 'https://your-backend.vercel.app'
+
+// ═══════════════════════════════════════════════
+//  HEADER SCROLL
+// ═══════════════════════════════════════════════
+const hdr = document.getElementById('hdr');
+let lastY = 0, ticking = false;
+window.addEventListener('scroll', () => {
+  if (!ticking) {
+    requestAnimationFrame(() => {
+      const y = window.scrollY;
+      hdr.classList.toggle('hidden', y > lastY + 12 && y > 80);
+      hdr.classList.toggle('scrolled', y > 20);
+      lastY = y; ticking = false;
+    });
+    ticking = true;
+  }
+}, { passive: true });
+
+// ═══════════════════════════════════════════════
+//  STATS — animated counter + live drift
+// ═══════════════════════════════════════════════
+let nOrders = 12847, nActive = 1203;
+
+function countUp(el, from, to, ms = 800) {
+  const t0 = performance.now();
+  (function frame(now) {
+    const p = Math.min((now - t0) / ms, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (to - from) * ease).toLocaleString();
+    if (p < 1) requestAnimationFrame(frame);
+  })(t0);
+}
+
+function driftOrders() {
+  const el = document.getElementById('s-orders');
+  const inc = Math.floor(Math.random() * 3) + 1;
+  countUp(el, nOrders, nOrders + inc);
+  nOrders += inc;
+  setTimeout(driftOrders, 8000 + Math.random() * 8000);
+}
+function driftActive() {
+  const el = document.getElementById('s-active');
+  const d = Math.floor(Math.random() * 5) + 1;
+  const next = Math.max(900, Math.min(1800, nActive + (Math.random() > 0.38 ? d : -d)));
+  countUp(el, nActive, next);
+  nActive = next;
+  setTimeout(driftActive, 4000 + Math.random() * 4000);
+}
+setTimeout(driftOrders, 3500);
+setTimeout(driftActive, 2500);
+
+// ═══════════════════════════════════════════════
+//  TICKER
+// ═══════════════════════════════════════════════
+const msgs = [
+  'User from Germany just placed an order',
+  'Order completed for TikTok video',
+  'User from United States submitted an order',
+  'Order delivered — Instagram reel',
+  'User from France just placed an order',
+  'TikTok order processed in 1m 42s',
+  'New order from United Kingdom',
+  'Views delivered — 100/100',
+  'User from Brazil submitted an order',
+  'Order completed for TikTok video',
+  'User from Japan just placed an order',
+  'Instagram order delivered successfully',
+];
+let tIdx = 0;
+const tItem = document.getElementById('titem');
+const tText = document.getElementById('ttext');
+
+function nextTick() {
+  tItem.classList.remove('visible');
+  tItem.classList.add('leaving');
+  setTimeout(() => {
+    tIdx = (tIdx + 1) % msgs.length;
+    tText.textContent = msgs[tIdx];
+    tItem.classList.remove('leaving');
+    tItem.classList.add('visible');
+  }, 460);
+  setTimeout(nextTick, 4800 + Math.random() * 2200);
+}
+setTimeout(() => {
+  tText.textContent = msgs[0];
+  tItem.classList.add('visible');
+  setTimeout(nextTick, 4200);
+}, 1400);
+
+// ═══════════════════════════════════════════════
+//  TOASTS
+// ═══════════════════════════════════════════════
+function showToast(type, msg) {
+  const c = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<div class="t-indicator"></div><span>${msg}</span>`;
+  c.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 300);
+  }, 5500);
+}
+
+// ═══════════════════════════════════════════════
+//  RIPPLE
+// ═══════════════════════════════════════════════
+function ripple(btn, e) {
+  const r = document.createElement('span');
+  const rect = btn.getBoundingClientRect();
+  const sz = Math.max(rect.width, rect.height);
+  r.className = 'ripple';
+  r.style.cssText = `width:${sz}px;height:${sz}px;left:${e.clientX-rect.left-sz/2}px;top:${e.clientY-rect.top-sz/2}px`;
+  btn.appendChild(r);
+  setTimeout(() => r.remove(), 600);
+}
+
+// ═══════════════════════════════════════════════
+//  MODAL
+// ═══════════════════════════════════════════════
+const overlay = document.getElementById('overlay');
+const subBtn  = document.getElementById('sub-btn');
+const subLbl  = document.getElementById('sub-lbl');
+const urlInp  = document.getElementById('url-inp');
+const mName   = document.getElementById('m-name');
+const mSub    = document.getElementById('m-sub');
+const mIcon   = document.getElementById('m-icon');
+
+const TT_SVG = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.77.11 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01A6.34 6.34 0 003.6 15.3a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.19 8.19 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z" fill="url(#ttm)"/><defs><linearGradient id="ttm" x1="3" y1="2" x2="21" y2="22" gradientUnits="userSpaceOnUse"><stop stop-color="#69C9D0"/><stop offset="1" stop-color="#EE1D52"/></linearGradient></defs></svg>`;
+const IG_SVG = `<svg width="19" height="19" viewBox="0 0 24 24"><defs><linearGradient id="igm" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse"><stop stop-color="#f09433"/><stop offset="0.5" stop-color="#dc2743"/><stop offset="1" stop-color="#bc1888"/></linearGradient></defs><path fill="url(#igm)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>`;
+
+let platform = '', busy = false;
+
+function openModal(p) {
+  platform = p;
+  mIcon.innerHTML = p === 'TikTok' ? TT_SVG : IG_SVG;
+  mName.textContent = `${p} Views`;
+  mSub.textContent = `Paste your ${p} video URL below`;
+  urlInp.value = '';
+  urlInp.placeholder = p === 'TikTok'
+    ? 'https://www.tiktok.com/@user/video/...'
+    : 'https://www.instagram.com/reel/...';
+  subLbl.textContent = 'Submit Order';
+  subBtn.disabled = false;
+  busy = false;
+  overlay.classList.add('open');
+  setTimeout(() => urlInp.focus(), 300);
+}
+function closeModal() { overlay.classList.remove('open'); }
+
+document.getElementById('btn-tt').addEventListener('click', () => openModal('TikTok'));
+document.getElementById('btn-ig').addEventListener('click', () => openModal('Instagram'));
+document.getElementById('btn-tt').addEventListener('keydown', e => e.key==='Enter' && openModal('TikTok'));
+document.getElementById('btn-ig').addEventListener('keydown', e => e.key==='Enter' && openModal('Instagram'));
+document.getElementById('m-close').addEventListener('click', closeModal);
+overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); });
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
+
+// ═══════════════════════════════════════════════
+//  SUBMIT
+// ═══════════════════════════════════════════════
+subBtn.addEventListener('click', async (e) => {
+  if (busy) return;
+  ripple(subBtn, e);
+  const url = urlInp.value.trim();
+  if (!url) { showToast('error', 'Please enter a video URL.'); urlInp.focus(); return; }
+  try { new URL(url); } catch { showToast('error', 'Enter a valid URL (include https://).'); urlInp.focus(); return; }
+  if (platform === 'TikTok' && !url.includes('tiktok.com')) { showToast('error', 'Please enter a valid TikTok URL.'); return; }
+  if (platform === 'Instagram' && !url.includes('instagram.com')) { showToast('error', 'Please enter a valid Instagram URL.'); return; }
+
+  busy = true; subBtn.disabled = true;
+  subLbl.innerHTML = '';
+  subBtn.insertAdjacentHTML('beforeend', '<div class="spin-ico"></div><span>Processing…</span>');
+
+  try {
+    const res = await fetch(`${API_BASE}/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ platform, url, amount: 100 })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      closeModal();
+      showToast('success', 'Your order will be delivered shortly. Orders are processed until your free credits are exhausted.');
+      const old = nOrders; nOrders++;
+      countUp(document.getElementById('s-orders'), old, nOrders);
+    } else {
+      showToast('error', data.message || 'Something went wrong. Please try again.');
+    }
+  } catch {
+    showToast('error', 'Network error. Make sure the backend is running.');
+  } finally {
+    busy = false; subBtn.disabled = false;
+    subBtn.innerHTML = '';
+    subLbl.textContent = 'Submit Order';
+    subBtn.appendChild(subLbl);
+  }
+});
+</script>
+</body>
+</html>
