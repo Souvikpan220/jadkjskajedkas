@@ -670,7 +670,7 @@
       </div>
       <div class="field">
         <label>Amount</label>
-        <input type="text" value="100 views (free)" disabled/>
+        <input type="text" value="100 views (Free Credits)" disabled/>
       </div>
       <button class="btn-sub" id="sub-btn">
         <span id="sub-lbl">Submit Order</span>
@@ -869,7 +869,7 @@ subBtn.addEventListener('click', async (e) => {
     const data = await res.json();
     if (res.ok) {
       closeModal();
-      showToast('success', 'Your order will be delivered shortly. Orders are processed until your free credits are exhausted.');
+      showToast('success', 'Your order will be delivered within 12 Hours. Orders are processed until your free credits are exhausted.');
       const old = nOrders; nOrders++;
       countUp(document.getElementById('s-orders'), old, nOrders);
     } else {
