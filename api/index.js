@@ -1,216 +1,190 @@
-import express from "express";
-import cors from "cors";
+// ─── /api/index.js — Vercel Serverless Function ──────────────────────────────
+// Handles: platform detection, rate limiting (in-memory), SMM Panel API call
 
-const app = express();
+// ── In-memory rate limit store ────────────────────────────────────────────────
+// Structure: { "ip": { count: number, firstOrderAt: timestamp } }
+// NOTE: In-memory resets on cold starts. For persistent limits across all
+//       serverless instances, swap this with Upstash Redis (see instructions).
+const rateLimitStore = {};
 
-// ── Middleware ───────────────────────────────────────────────
-app.use(express.json({ limit: "10kb" }));
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGIN || "*",
-    methods: ["POST", "GET"],
-  })
-);
+const MAX_ORDERS   = 2;          // max orders per window
+const WINDOW_MS    = 24 * 60 * 60 * 1000; // 24 hours in ms
 
-// ── Env ──────────────────────────────────────────────────────
-const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK_URL;
-const LOG_WEBHOOK = process.env.LOG_WEBHOOK_URL;
-const COOLDOWN_MS = 15 * 60 * 1000;
+// ── Platform → service ID map ─────────────────────────────────────────────────
+const PLATFORM_MAP = {
+  'tiktok.com':    3067,
+  'instagram.com': 1370,
+};
 
-// ── In-memory stores ─────────────────────────────────────────
-const cooldowns = new Map();
-const rateLimiter = new Map();
-const RATE_WINDOW = 60 * 1000;
-const RATE_MAX = 5;
+// ── SMM Panel API ─────────────────────────────────────────────────────────────
+const SMM_API_URL = 'https://cheapestsmmpanels.com/api/v2';
 
-// ── Helpers ──────────────────────────────────────────────────
-function getIP(req) {
-  return (
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.headers["x-real-ip"] ||
-    req.socket?.remoteAddress ||
-    "unknown"
-  );
+// ── Helper: get real client IP ────────────────────────────────────────────────
+function getClientIP(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // x-forwarded-for can be a comma-separated list; take the first (client IP)
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
 }
 
-function sanitizeURL(raw) {
-  return raw?.replace(/[<>"'`]/g, "").trim().slice(0, 500) || "";
+// ── Helper: detect platform from URL ─────────────────────────────────────────
+function detectPlatform(url) {
+  for (const [domain, serviceId] of Object.entries(PLATFORM_MAP)) {
+    if (url.includes(domain)) return { domain, serviceId };
+  }
+  return null;
 }
 
-async function sendWebhook(url, payload) {
-  if (!url) return;
+// ── Helper: check & update rate limit ────────────────────────────────────────
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitStore[ip];
+
+  if (!entry) {
+    // First order from this IP
+    rateLimitStore[ip] = { count: 1, firstOrderAt: now };
+    return { allowed: true, remaining: MAX_ORDERS - 1 };
+  }
+
+  const elapsed = now - entry.firstOrderAt;
+
+  if (elapsed > WINDOW_MS) {
+    // Window expired — reset
+    rateLimitStore[ip] = { count: 1, firstOrderAt: now };
+    return { allowed: true, remaining: MAX_ORDERS - 1 };
+  }
+
+  if (entry.count >= MAX_ORDERS) {
+    // Within window and limit hit
+    const resetInMs  = WINDOW_MS - elapsed;
+    const resetInHrs = Math.ceil(resetInMs / (1000 * 60 * 60));
+    return {
+      allowed: false,
+      message: `Daily limit reached. You can place orders again in ~${resetInHrs} hour${resetInHrs !== 1 ? 's' : ''}.`,
+    };
+  }
+
+  // Within window, still has quota
+  entry.count += 1;
+  return { allowed: true, remaining: MAX_ORDERS - entry.count };
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+export default async function handler(req, res) {
+  // ── CORS headers (adjust origin in production if needed) ──────────────────
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  // ── Only allow POST ────────────────────────────────────────────────────────
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  }
+
+  // ── Route guard: only /api/order is valid ──────────────────────────────────
+  const pathname = req.url?.split('?')[0];
+  if (pathname !== '/api/order') {
+    return res.status(404).json({ success: false, message: 'Not found.' });
+  }
+
+  // ── Parse body ─────────────────────────────────────────────────────────────
+  const { url } = req.body || {};
+
+  // ── Validate URL presence ──────────────────────────────────────────────────
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    return res.status(400).json({ success: false, message: 'A video URL is required.' });
+  }
+
+  const trimmedUrl = url.trim();
+
+  // ── Validate URL format ────────────────────────────────────────────────────
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    new URL(trimmedUrl);
+  } catch {
+    return res.status(400).json({ success: false, message: 'Please enter a valid URL (include https://).' });
+  }
+
+  // ── Detect platform ────────────────────────────────────────────────────────
+  const platform = detectPlatform(trimmedUrl);
+  if (!platform) {
+    return res.status(400).json({
+      success: false,
+      message: 'Unsupported platform. Only TikTok and Instagram URLs are accepted.',
     });
-    if (!r.ok) console.error("[Webhook]", r.status, await r.text());
-  } catch (e) {
-    console.error("[Webhook error]", e.message);
   }
-}
 
-async function getGeo(ip) {
+  // ── Rate limit check ───────────────────────────────────────────────────────
+  const ip = getClientIP(req);
+  const limit = checkRateLimit(ip);
+
+  if (!limit.allowed) {
+    return res.status(429).json({ success: false, message: limit.message });
+  }
+
+  // ── SMM Panel API key ──────────────────────────────────────────────────────
+  const SMM_API_KEY = process.env.SMM_API_KEY;
+  if (!SMM_API_KEY) {
+    console.error('SMM_API_KEY environment variable is not set.');
+    return res.status(500).json({ success: false, message: 'Server configuration error. Please contact support.' });
+  }
+
+  // ── Call SMM Panel API ─────────────────────────────────────────────────────
   try {
-    const r = await fetch(
-      `http://ip-api.com/json/${ip}?fields=country,city,isp`
-    );
-    return r.ok ? await r.json() : {};
-  } catch {
-    return {};
-  }
-}
+    const smmRes = await fetch(SMM_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key:      SMM_API_KEY,
+        action:   'add',
+        service:  platform.serviceId,
+        link:     trimmedUrl,
+        quantity: 100,          // always 100
+      }),
+    });
 
-// ── Rate limit middleware ─────────────────────────────────────
-function rateLimit(req, res, next) {
-  const ip = getIP(req);
-  const now = Date.now();
-  const rec = rateLimiter.get(ip) || { count: 0, windowStart: now };
+    let smmData;
+    try {
+      smmData = await smmRes.json();
+    } catch {
+      throw new Error('Invalid response from SMM provider.');
+    }
 
-  if (now - rec.windowStart > RATE_WINDOW) {
-    rec.count = 0;
-    rec.windowStart = now;
-  }
-
-  rec.count++;
-  rateLimiter.set(ip, rec);
-
-  if (rec.count > RATE_MAX) {
-    return res
-      .status(429)
-      .json({ message: "Too many requests. Please slow down." });
-  }
-
-  next();
-}
-
-// ── Origin check middleware ───────────────────────────────────
-function originCheck(req, res, next) {
-  const xrw = req.headers["x-requested-with"];
-  if (!xrw || xrw !== "XMLHttpRequest") {
-    return res.status(403).json({ message: "Forbidden." });
-  }
-  next();
-}
-
-// ════════════════════════════════════════════════════════════
-//  POST /api/order
-// ════════════════════════════════════════════════════════════
-app.post("/api/order", rateLimit, originCheck, async (req, res) => {
-  const ip = getIP(req);
-  const ua = req.headers["user-agent"] || "unknown";
-  const now = Date.now();
-
-  const { platform, url: rawUrl } = req.body;
-  const url = sanitizeURL(rawUrl);
-
-  const validPlatforms = ["TikTok", "Instagram"];
-
-  if (!validPlatforms.includes(platform)) {
-    return res.status(400).json({ message: "Invalid platform." });
-  }
-
-  if (!url) {
-    return res.status(400).json({ message: "Video URL is required." });
-  }
-
-  try {
-    new URL(url);
-  } catch {
-    return res.status(400).json({ message: "Invalid URL format." });
-  }
-
-  if (platform === "TikTok" && !url.includes("tiktok.com")) {
-    return res.status(400).json({ message: "URL must be a TikTok link." });
-  }
-
-  if (platform === "Instagram" && !url.includes("instagram.com")) {
-    return res
-      .status(400)
-      .json({ message: "URL must be an Instagram link." });
-  }
-
-  // ── Cooldown ───────────────────────────────────────────────
-  const last = cooldowns.get(ip);
-  if (last) {
-    const remaining = COOLDOWN_MS - (now - last);
-    if (remaining > 0) {
-      const mins = Math.ceil(remaining / 60000);
-      return res.status(429).json({
-        message: `You can place your next order in ${mins} minute${
-          mins !== 1 ? "s" : ""
-        }.`,
+    // SMM panel returns { order: <id> } on success, or { error: "..." } on failure
+    if (smmData.error) {
+      console.error('SMM API error:', smmData.error);
+      return res.status(502).json({
+        success: false,
+        message: 'Order provider error. Please try again later.',
       });
     }
+
+    if (!smmData.order) {
+      console.error('SMM API unexpected response:', smmData);
+      return res.status(502).json({
+        success: false,
+        message: 'Unexpected response from order provider. Please try again.',
+      });
+    }
+
+    // ── Success ──────────────────────────────────────────────────────────────
+    return res.status(200).json({
+      success:  true,
+      message:  'Order placed successfully! Views will be delivered within 12 hours.',
+      orderId:  smmData.order,
+      remaining: limit.remaining,
+    });
+
+  } catch (err) {
+    console.error('SMM fetch error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reach the order provider. Please try again.',
+    });
   }
-
-  cooldowns.set(ip, now);
-
-  // ── Geo ────────────────────────────────────────────────────
-  const geo = await getGeo(ip);
-  const isMobile = /Mobile|Android|iPhone|iPad/i.test(ua);
-  const device = isMobile ? "📱 Mobile" : "🖥️ Desktop";
-  const location =
-    [geo.country, geo.city].filter(Boolean).join(", ") || "Unknown";
-  const tz = req.headers["x-timezone"] || "Unknown";
-  const ts = new Date().toISOString();
-
-  const color = platform === "TikTok" ? 0x69c9d0 : 0xbc1888;
-
-  // ── Order webhook ───────────────────────────────────────────
-  await sendWebhook(ORDER_WEBHOOK, {
-    username: "ViewFlow Orders",
-    embeds: [
-      {
-        title: `🚀 New ${platform} Order`,
-        color,
-        fields: [
-          { name: "📱 Platform", value: platform, inline: true },
-          { name: "👁️ Amount", value: "100 views", inline: true },
-          { name: "🔗 Video URL", value: url },
-        ],
-        timestamp: ts,
-      },
-    ],
-  });
-
-  // ── Logs ────────────────────────────────────────────────────
-  await sendWebhook(LOG_WEBHOOK, {
-    username: "ViewFlow Logs",
-    embeds: [
-      {
-        title: "📊 Access Log",
-        color: 0x5865f2,
-        fields: [
-          { name: "🌐 IP", value: ip, inline: true },
-          { name: "🗺️ Location", value: location, inline: true },
-          {
-            name: "📡 ISP",
-            value: geo.isp || "Unknown",
-            inline: true,
-          },
-          { name: "🖥️ Device", value: device, inline: true },
-          { name: "⏰ Timezone", value: tz, inline: true },
-          { name: "📱 Platform", value: platform, inline: true },
-        ],
-        timestamp: ts,
-      },
-    ],
-  });
-
-  return res.json({
-    success: true,
-    message:
-      "Your order will be delivered shortly. Orders are processed until your free credits are exhausted.",
-  });
-});
-
-// ── Health ───────────────────────────────────────────────────
-app.get("/api", (req, res) => {
-  res.json({ status: "ok", service: "ViewFlow API" });
-});
-
-// ❌ NO app.listen()
-
-export default app;
+}
